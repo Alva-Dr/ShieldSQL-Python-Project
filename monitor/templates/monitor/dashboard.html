@@ -1,0 +1,208 @@
+{% extends 'monitor/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - ShieldSQL{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+  <h1 class="h2">Security Dashboard</h1>
+  <div class="btn-toolbar mb-2 mb-md-0">
+    <a href="{% url 'monitor:export_pdf' %}" class="btn btn-sm btn-outline-secondary me-2">📥 Export PDF</a>
+    <a href="{% url 'monitor:reports' %}" class="btn btn-sm btn-primary">View Reports</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card card-stat severity-critical">
+      <div class="card-body">
+        <h6 class="card-subtitle mb-2 text-muted">Total Alerts</h6>
+        <h3 class="card-title mb-0">{{ summary.total_alerts }}</h3>
+        <small class="text-danger">Today: {{ summary.today_alerts }}</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat severity-high">
+      <div class="card-body">
+        <h6 class="card-subtitle mb-2 text-muted">SQLi Attempts</h6>
+        <h3 class="card-title mb-0">{{ summary.total_sqli }}</h3>
+        <small class="text-danger">Today: {{ summary.today_sqli }}</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat severity-high">
+      <div class="card-body">
+        <h6 class="card-subtitle mb-2 text-muted">Blocked Today</h6>
+        <h3 class="card-title mb-0">{{ summary.blocked_today }}</h3>
+        <small class="text-muted">High + Critical</small>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat severity-medium">
+      <div class="card-body">
+        <h6 class="card-subtitle mb-2 text-muted">Total Logs</h6>
+        <h3 class="card-title mb-0">{{ summary.total_logs }}</h3>
+        <small class="text-muted">All traffic entries</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header">SQL Injection Attempts (Last 24 Hours)</div>
+      <div class="card-body">
+        <canvas id="hourlyChart" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">Risk Breakdown</div>
+      <div class="card-body">
+        <canvas id="riskChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Top Source IPs</span>
+        <a href="{% url 'monitor:alerts' %}" class="btn btn-sm btn-link p-0">View all →</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-striped mb-0">
+            <thead><tr><th>IP Address</th><th>Attempts</th></tr></thead>
+            <tbody>
+              {% for ip in top_ips %}
+              <tr><td>{{ ip.source_ip }}</td><td>{{ ip.c }}</td></tr>
+              {% empty %}
+              <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Quick Actions</div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <a href="{% url 'monitor:query_analysis' %}" class="btn btn-danger">🔍 Analyze Manual Query</a>
+          <a href="{% url 'monitor:traffic' %}" class="btn btn-outline-primary">📡 Real-time Traffic</a>
+          <a href="{% url 'monitor:export_pdf' %}" class="btn btn-outline-secondary">📥 Download PDF Report</a>
+          {% if user.is_authenticated and user.role == 'admin' %}
+          <a href="{% url 'monitor:user_management' %}" class="btn btn-outline-success">👥 Manage Users</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Recent Alerts</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead><tr><th>Time</th><th>Severity</th><th>Message</th></tr></thead>
+            <tbody>
+              {% for alert in recent_alerts %}
+              <tr>
+                <td>{{ alert.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                  <span class="badge bg-{% if alert.severity == 'critical' %}danger{% elif alert.severity == 'high' %}warning{% elif alert.severity == 'medium' %}info{% else %}secondary{% endif %}">
+                    {{ alert.severity|upper }}
+                  </span>
+                </td>
+                <td class="text-truncate" style="max-width:250px;">{{ alert.message }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" class="text-center text-muted">No alerts</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Recent SQL Injection Attempts</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead><tr><th>Time</th><th>IP</th><th>Severity</th><th>Pattern</th></tr></thead>
+            <tbody>
+              {% for attempt in recent_sqli %}
+              <tr>
+                <td>{{ attempt.timestamp|date:"Y-m-d H:i" }}</td>
+                <td>{{ attempt.source_ip }}</td>
+                <td>
+                  <span class="badge bg-{% if attempt.severity == 'critical' %}danger{% elif attempt.severity == 'high' %}warning{% elif attempt.severity == 'medium' %}info{% else %}secondary{% endif %}">
+                    {{ attempt.severity|upper }}
+                  </span>
+                </td>
+                <td class="text-truncate" style="max-width:250px;">{{ attempt.matched_pattern|truncatechars:40 }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="4" class="text-center text-muted">No attempts detected</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
+  new Chart(ctxHourly, {
+    type: 'bar',
+    data: {
+      labels: {{ hourly_chart.labels|safe }},
+      datasets: [{
+        label: 'SQLi Attempts',
+        data: {{ hourly_chart.data|safe }},
+        backgroundColor: 'rgba(220, 53, 69, 0.7)',
+        borderColor: 'rgba(220, 53, 69, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  const riskLabels = [];
+  const riskData = [];
+  const riskColors = [];
+  const colorMap = { low: 'rgba(25, 135, 84, 0.7)', medium: 'rgba(255, 193, 7, 0.7)', high: 'rgba(253, 126, 20, 0.7)', critical: 'rgba(220, 53, 69, 0.7)' };
+  for (const [sev, cnt] of Object.entries({{ risk_breakdown_json|safe }})) {
+    riskLabels.push(sev.toUpperCase());
+    riskData.push(cnt);
+    riskColors.push(colorMap[sev] || '#6c757d');
+  }
+  const ctxRisk = document.getElementById('riskChart').getContext('2d');
+  new Chart(ctxRisk, {
+    type: 'doughnut',
+    data: {
+      labels: riskLabels,
+      datasets: [{ data: riskData, backgroundColor: riskColors }]
+    }
+  });
+</script>
+{% endblock %}

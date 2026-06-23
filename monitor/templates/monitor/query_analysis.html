@@ -1,0 +1,66 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Query Analysis - ShieldSQL{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card mb-4">
+      <div class="card-header">Analyze Query</div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-3">
+            <label class="form-label">SQL Query</label>
+            {{ form.query }}
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Context (optional)</label>
+            {{ form.source_context }}
+          </div>
+          <button type="submit" class="btn btn-danger">Analyze</button>
+        </form>
+        {% if result %}
+        <div class="mt-4 p-3 border rounded">
+          <h5>Analysis Result</h5>
+          {% if result.is_suspicious %}
+            <div class="alert alert-warning">
+              <strong>Suspicious!</strong> {{ result.explanation }}
+              <br><small>Severity: <span class="badge bg-{{ result.severity }}">{{ result.severity|upper }}</span></small>
+              {% if result.patterns %}
+              <ul class="mt-2">
+                {% for p in result.patterns %}<li>{{ p }}</li>{% endfor %}
+              </ul>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="alert alert-success">No suspicious patterns detected. Query appears safe.</div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Your Recent Scan History</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead><tr><th>Time</th><th>Severity</th><th>Pattern</th></tr></thead>
+            <tbody>
+              {% for attempt in history %}
+              <tr>
+                <td>{{ attempt.timestamp|date:"Y-m-d H:i" }}</td>
+                <td><span class="badge bg-{{ attempt.severity }}">{{ attempt.severity|upper }}</span></td>
+                <td class="text-truncate" style="max-width:300px;">{{ attempt.matched_pattern|truncatechars:60 }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" class="text-center text-muted">No history</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

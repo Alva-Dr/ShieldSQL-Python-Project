@@ -1,0 +1,69 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Reports - ShieldSQL{% endblock %}
+{% block content %}
+<h2>Security Reports</h2>
+<div class="row g-3 mt-2">
+  <div class="col-md-3"><div class="card text-center"><div class="card-body"><h3 class="text-primary">{{ summary.total_alerts }}</h3><p class="card-text">Total Alerts</p></div></div></div>
+  <div class="col-md-3"><div class="card text-center"><div class="card-body"><h3 class="text-danger">{{ summary.total_sqli }}</h3><p class="card-text">Total SQLi</p></div></div></div>
+  <div class="col-md-3"><div class="card text-center"><div class="card-body"><h3 class="text-warning">{{ summary.weekly_alerts }}</h3><p class="card-text">Weekly Alerts</p></div></div></div>
+  <div class="col-md-3"><div class="card text-center"><div class="card-body"><h3 class="text-danger">{{ summary.weekly_sqli }}</h3><p class="card-text">Weekly SQLi</p></div></div></div>
+</div>
+<div class="row g-3 mt-2">
+  <div class="col-md-3"><div class="card card-stat severity-critical"><div class="card-body"><h5>Critical</h5><h2>{{ summary.critical_sqli }}</h2></div></div></div>
+  <div class="col-md-3"><div class="card card-stat severity-high"><div class="card-body"><h5>High</h5><h2>{{ summary.high_sqli }}</h2></div></div></div>
+  <div class="col-md-3"><div class="card card-stat severity-medium"><div class="card-body"><h5>Medium</h5><h2>{{ summary.medium_sqli }}</h2></div></div></div>
+  <div class="col-md-3"><div class="card card-stat severity-low"><div class="card-body"><h5>Low</h5><h2>{{ summary.low_sqli }}</h2></div></div></div>
+</div>
+<div class="row g-3 mt-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Daily Trend (Last 7 Days)</div>
+      <div class="card-body">
+        <canvas id="trendChart" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Top Threat Types</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Pattern</th><th>Count</th></tr></thead>
+            <tbody>
+              {% for t in threat_types %}
+              <tr><td>{{ t.matched_pattern }}</td><td>{{ t.c }}</td></tr>
+              {% empty %}
+              <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="mt-4 text-center">
+  <a href="{% url 'monitor:export_pdf' %}" class="btn btn-lg btn-outline-danger">📥 Download Full PDF Report</a>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ daily_trend_labels|safe }},
+      datasets: [{
+        label: 'SQLi Attempts',
+        data: {{ daily_trend_counts|safe }},
+        borderColor: 'rgba(220, 53, 69, 1)',
+        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+</script>
+{% endblock %}

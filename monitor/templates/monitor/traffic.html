@@ -1,0 +1,51 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Traffic Monitor - ShieldSQL{% endblock %}
+{% block extra_js %}
+<script>
+  let lastTimestamp = null;
+  function pollTraffic() {
+    fetch("{% url 'monitor:traffic_api' %}")
+      .then(r => r.json())
+      .then(data => {
+        const tbody = document.getElementById('trafficBody');
+        tbody.innerHTML = '';
+        data.logs.forEach(log => {
+          const tr = document.createElement('tr');
+          const badgeClass = log.level === 'critical' || log.level === 'error' ? 'danger'
+            : log.level === 'warning' ? 'warning'
+            : log.level === 'info' ? 'info' : 'secondary';
+          tr.innerHTML = `
+            <td>${log.timestamp}</td>
+            <td><span class="badge bg-${badgeClass}">${log.level.toUpperCase()}</span></td>
+            <td>${log.source_ip || '-'}</td>
+            <td class="text-truncate" style="max-width:400px;">${log.message}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      });
+  }
+  setInterval(pollTraffic, 3000);
+  pollTraffic();
+</script>
+{% endblock %}
+{% block content %}
+<h2>Real-time Traffic Monitor</h2>
+<p class="text-muted">Auto-refreshing every 3 seconds.</p>
+<div class="table-responsive">
+  <table class="table table-hover">
+    <thead><tr><th>Time</th><th>Level</th><th>Source IP</th><th>Message</th></tr></thead>
+    <tbody id="trafficBody">
+      {% for l in logs %}
+      <tr>
+        <td>{{ l.timestamp|date:"Y-m-d H:i:s" }}</td>
+        <td><span class="badge bg-{% if l.level == 'critical' or l.level == 'error' %}danger{% elif l.level == 'warning' %}warning{% elif l.level == 'info' %}info{% else %}secondary{% endif %}">{{ l.level|upper }}</span></td>
+        <td>{{ l.source_ip|default:"-" }}</td>
+        <td class="text-truncate" style="max-width:400px;">{{ l.message|truncatechars:200 }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-center text-muted">No traffic logs yet</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
