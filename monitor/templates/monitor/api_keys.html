@@ -1,0 +1,71 @@
+{% extends 'monitor/base.html' %}
+{% block title %}API Key Management - ShieldSQL{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pb-2 mb-3 border-bottom">
+  <div>
+    <h2>API Key Management</h2>
+    <p class="text-muted">Create and manage API keys for external applications to use ShieldSQL validation.</p>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="post" class="row g-3 align-items-end">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create">
+      <div class="col-md-8">
+        <label class="form-label" for="apiKeyName">Key name</label>
+        <input id="apiKeyName" name="name" type="text" class="form-control" placeholder="Describe this key, e.g. 'Other Web App'">
+      </div>
+      <div class="col-md-4">
+        <button type="submit" class="btn btn-primary w-100">Create new API key</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Requested by</th>
+        <th>Active</th>
+        <th>Created</th>
+        <th>Last used</th>
+        <th>Connection</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key in keys %}
+      <tr>
+        <td>{{ key.name }}</td>
+        <td>{% if key.owner %}{{ key.owner }}{% else %}System{% endif %}</td>
+        <td>{% if key.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-danger">Inactive</span>{% endif %}</td>
+        <td>{{ key.created_at|date:'Y-m-d H:i' }}</td>
+        <td>{% if key.last_used %}{{ key.last_used|date:'Y-m-d H:i' }}{% else %}<span class="text-muted">Never</span>{% endif %}</td>
+        <td>{% if key.connected %}<span class="badge bg-success">Connected</span>{% else %}<span class="text-muted">Disconnected</span>{% endif %}</td>
+        <td>
+          <form method="post" class="d-flex gap-1">
+            {% csrf_token %}
+            <input type="hidden" name="key_id" value="{{ key.pk }}">
+            <button type="submit" name="action" value="{% if key.is_active %}deactivate{% else %}activate{% endif %}" class="btn btn-sm btn-outline-secondary">
+              {% if key.is_active %}Deactivate{% else %}Activate{% endif %}
+            </button>
+            <button type="submit" name="action" value="delete" class="btn btn-sm btn-outline-danger">Delete</button>
+            {% if user.is_superuser %}
+            <button type="submit" name="action" value="reveal" class="btn btn-sm btn-outline-info">Reveal</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="7" class="text-center text-muted">No API keys found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

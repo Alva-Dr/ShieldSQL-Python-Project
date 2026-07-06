@@ -87,13 +87,14 @@ class SQLInjectionLoggingMiddleware(MiddlewareMixin):
             # Combine POST body, FILES, and GET params
             post_data = {k: v for k, v in request.POST.items()}
             json_body = {}
-            if hasattr(request, "body") and request.body:
+            if request.content_type == "application/json":
                 try:
-                    import json
-                    body_str = request.body.decode("utf-8", errors="ignore")
-                    if body_str.strip().startswith("{") or body_str.strip().startswith("["):
-                        json_body = json.loads(body_str)
-                except (ValueError, UnicodeDecodeError):
+                    if hasattr(request, "body") and request.body:
+                        import json
+                        body_str = request.body.decode("utf-8", errors="ignore")
+                        if body_str.strip().startswith("{") or body_str.strip().startswith("["):
+                            json_body = json.loads(body_str)
+                except Exception:
                     pass
             params_to_check = {**post_data, **json_body}
 
@@ -201,5 +202,38 @@ class SQLInjectionLoggingMiddleware(MiddlewareMixin):
             ip,
             path,
         )
+
+        if top_severity in ("high", "critical"):
+            # Exclude sandbox and validation API URLs from blocking so they can analyze queries
+            if request.path.rstrip('/') in ("/query", "/api/validate"):
+                return None
+
+            from django.http import HttpResponse, JsonResponse
+            from django.template.loader import render_to_string
+
+            # Check if JSON request or API path
+            is_json = (
+                request.content_type == "application/json"
+                or path.startswith("/api/")
+                or "application/json" in request.META.get("HTTP_ACCEPT", "")
+            )
+
+            if is_json:
+                return JsonResponse({
+                    "status": "blocked",
+                    "reason": f"Request blocked by ShieldSQL. SQL Injection attempt detected: {top_finding['explanation']}",
+                    "severity": top_severity,
+                    "parameter": top_finding["param"],
+                    "timestamp": now.isoformat(),
+                    "ip": ip,
+                }, status=403)
+            else:
+                html = render_to_string("monitor/blocked.html", {
+                    "reason": top_finding["explanation"],
+                    "severity": top_severity.upper(),
+                    "ip": ip,
+                    "timestamp": now,
+                }, request=request)
+                return HttpResponse(html, status=403)
 
         return None

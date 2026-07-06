@@ -1,6 +1,11 @@
+import hashlib
+import secrets
+from django.core import signing
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -76,3 +81,69 @@ class DetectedSQLInjectionAttempt(models.Model):
 
     def __str__(self):
         return f"SQLi from {self.source_ip or 'unknown'} at {self.timestamp}"
+
+
+class APIKey(models.Model):
+    name = models.CharField(max_length=120)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="api_keys",
+    )
+    hashed_key = models.CharField(max_length=64, unique=True, editable=False)
+    encrypted_key = models.TextField(null=True, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"API Key {self.name} ({'active' if self.is_active else 'inactive'})"
+
+    @staticmethod
+    def generate_raw_key(length: int = 32) -> str:
+        return secrets.token_urlsafe(length)
+
+    @staticmethod
+    def hash_key(raw_key: str) -> str:
+        return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+    def set_raw_key(self, raw_key: str):
+        self.hashed_key = self.hash_key(raw_key)
+
+    @classmethod
+    def create_key(cls, name: str, owner=None, is_active: bool = True):
+        raw_key = cls.generate_raw_key()
+        instance = cls(name=name, owner=owner, is_active=is_active)
+        instance.set_raw_key(raw_key)
+        try:
+            instance.encrypted_key = signing.dumps(raw_key, salt="monitor.apikey.v1")
+        except Exception:
+            instance.encrypted_key = None
+        instance.save()
+        return instance, raw_key
+
+    @classmethod
+    def verify(cls, raw_key: str):
+        if not raw_key or not isinstance(raw_key, str):
+            return None
+        hashed = cls.hash_key(raw_key.strip())
+        return cls.objects.filter(hashed_key=hashed, is_active=True).first()
+
+    def mark_used(self):
+        self.last_used = timezone.now()
+        self.save(update_fields=["last_used"])
+
+    def reveal_raw_key(self):
+        """Return the original raw key when possible (signed)."""
+        if not self.encrypted_key:
+            return None
+        try:
+            raw = signing.loads(self.encrypted_key, salt="monitor.apikey.v1")
+            return raw
+        except signing.BadSignature:
+            return None

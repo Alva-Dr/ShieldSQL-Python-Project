@@ -15,4 +15,6 @@ urlpatterns = [
     path('users/', views.UserManagementView.as_view(), name='user_management'),
     path('reports/pdf/', views.ExportPDFView.as_view(), name='export_pdf'),
     path('api/traffic/', views.TrafficAPIView.as_view(), name='traffic_api'),
+    path('api/validate/', views.ValidateQueryAPIView.as_view(), name='validate_api'),
+    path('api/keys/', views.APIKeyManagementView.as_view(), name='api_keys'),
 ]

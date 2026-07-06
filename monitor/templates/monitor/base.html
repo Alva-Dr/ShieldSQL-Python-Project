@@ -32,8 +32,11 @@
           <a href="{% url 'monitor:alerts' %}" class="{% if request.resolver_match.url_name == 'alerts' %}active{% endif %}">🚨 Alert History</a>
           <a href="{% url 'monitor:reports' %}" class="{% if request.resolver_match.url_name == 'reports' %}active{% endif %}">📋 Reports</a>
           <a href="{% url 'monitor:query_analysis' %}" class="{% if request.resolver_match.url_name == 'query_analysis' %}active{% endif %}">🔍 Analyze Query</a>
-          {% if user.is_authenticated and user.role == 'admin' %}
-          <a href="{% url 'monitor:user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' %}active{% endif %}">👥 User Management</a>
+          {% if user.is_authenticated %}
+            {% if user.is_superuser or user.is_staff or user.role|lower == 'admin' %}
+              <a href="{% url 'monitor:user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' %}active{% endif %}">👥 User Management</a>
+              <a href="{% url 'monitor:api_keys' %}" class="{% if request.resolver_match.url_name == 'api_keys' %}active{% endif %}">🔑 API Keys</a>
+            {% endif %}
           {% endif %}
           <hr class="border-secondary">
           {% if user.is_authenticated %}

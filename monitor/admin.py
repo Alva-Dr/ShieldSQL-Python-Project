@@ -27,3 +27,12 @@ class SQLiAdmin(admin.ModelAdmin):
     list_display = ('timestamp', 'source_ip', 'severity', 'user')
     list_filter = ('severity',)
     search_fields = ('raw_query', 'matched_pattern')
+
+
+@admin.register(models.APIKey)
+class APIKeyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'owner', 'is_active', 'created_at', 'last_used')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('name', 'owner__username')
+    readonly_fields = ('hashed_key', 'created_at', 'last_used')
+    fields = ('name', 'owner', 'is_active', 'hashed_key', 'created_at', 'last_used')

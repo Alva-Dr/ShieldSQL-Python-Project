@@ -32,7 +32,10 @@ def role_required(min_role: str):
             if not request.user.is_authenticated:
                 messages.error(request, "You must be logged in to access this page.")
                 return redirect("monitor:login")
-            user_level = ROLE_HIERARCHY.get(request.user.role, 0)
+            if request.user.is_superuser:
+                user_level = 2  # Max level (admin)
+            else:
+                user_level = ROLE_HIERARCHY.get(request.user.role, 0)
             if user_level < min_level:
                 raise PermissionDenied(
                     f"Access denied. Required role: {ROLE_CHOICES.get(min_role, min_role)}."
@@ -56,7 +59,10 @@ class RoleRequiredMixin(LoginRequiredMixin):
         if not request.user.is_authenticated:
             return self.handle_no_permission()
         min_level = ROLE_HIERARCHY.get(self.min_role, 0)
-        user_level = ROLE_HIERARCHY.get(getattr(request.user, "role", ""), 0)
+        if request.user.is_superuser:
+            user_level = 2  # Max level (admin)
+        else:
+            user_level = ROLE_HIERARCHY.get(getattr(request.user, "role", ""), 0)
         if user_level < min_level:
             messages.error(
                 request,
