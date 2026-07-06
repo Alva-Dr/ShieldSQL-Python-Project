@@ -49,13 +49,17 @@
         <td>
           <form method="post" class="d-flex gap-1">
             {% csrf_token %}
-            <input type="hidden" name="key_id" value="{{ key.pk }}">
+            <input type="hidden" name="key_id" value="{{ key.id }}">
             <button type="submit" name="action" value="{% if key.is_active %}deactivate{% else %}activate{% endif %}" class="btn btn-sm btn-outline-secondary">
               {% if key.is_active %}Deactivate{% else %}Activate{% endif %}
             </button>
             <button type="submit" name="action" value="delete" class="btn btn-sm btn-outline-danger">Delete</button>
             {% if user.is_superuser %}
-            <button type="submit" name="action" value="reveal" class="btn btn-sm btn-outline-info">Reveal</button>
+              {% if key.revealable %}
+                <button type="submit" name="action" value="reveal" class="btn btn-sm btn-outline-info">Reveal</button>
+              {% else %}
+                <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Key cannot be revealed">Reveal</button>
+              {% endif %}
             {% endif %}
           </form>
         </td>

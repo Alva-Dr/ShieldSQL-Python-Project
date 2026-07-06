@@ -106,6 +106,11 @@ class AlertHistoryView(RoleRequiredMixin, ListView):
     context_object_name = "alerts"
     min_role = "viewer"
 
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == "POST":
+            return self.post(request, *args, **kwargs)
+        return super().dispatch(request, *args, **kwargs)
+
     def get_queryset(self):
         qs = super().get_queryset().select_related("user")
         severity = self.request.GET.get("severity")
@@ -115,6 +120,33 @@ class AlertHistoryView(RoleRequiredMixin, ListView):
         if search:
             qs = qs.filter(message__icontains=search)
         return qs
+
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            messages.error(request, "You must be logged in to resolve alerts.")
+            return redirect("monitor:login")
+
+        if not (request.user.is_superuser or request.user.role in ("admin", "analyst")):
+            messages.error(request, "You do not have permission to resolve alerts.")
+            return redirect("monitor:alerts")
+
+        action = request.POST.get("action")
+        if action == "resolve":
+            alert_id = request.POST.get("alert_id", "").strip()
+            if not alert_id:
+                messages.error(request, "Invalid alert request.")
+                return redirect("monitor:alerts")
+            alert = get_object_or_404(models.Alert, pk=alert_id)
+            if alert.is_resolved:
+                messages.info(request, "Alert is already resolved.")
+            else:
+                alert.is_resolved = True
+                alert.resolved_at = timezone.now()
+                alert.save(update_fields=["is_resolved", "resolved_at"])
+                messages.success(request, "Alert marked as resolved.")
+        else:
+            messages.error(request, "Unknown action.")
+        return redirect("monitor:alerts")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -595,6 +627,7 @@ class APIKeyManagementView(RoleRequiredMixin, View):
                 "created_at": key.created_at,
                 "last_used": last_used,
                 "connected": connected,
+                "revealable": bool(key.encrypted_key),
             })
         return render(request, self.template_name, {"keys": keys_info})
 
@@ -619,19 +652,27 @@ class APIKeyManagementView(RoleRequiredMixin, View):
             return redirect("monitor:api_keys")
 
         if action == "reveal":
-            # Allow Django superusers and app admins to reveal stored keys
             if not (request.user.is_superuser or request.user.role == "admin"):
                 messages.error(request, "Permission denied.")
                 return redirect("monitor:api_keys")
-            api_key = get_object_or_404(models.APIKey, pk=request.POST.get("key_id"))
+
+            key_id = request.POST.get("key_id", "").strip()
+            if not key_id:
+                messages.error(request, "Please select an API key to reveal.")
+                return redirect("monitor:api_keys")
+
+            api_key = get_object_or_404(models.APIKey, pk=key_id)
             raw = api_key.reveal_raw_key()
             if raw:
                 messages.info(request, f"API key secret for '{api_key.name}': {raw}")
             else:
-                messages.error(request, "Unable to reveal API key (not stored or tampered).")
+                messages.error(
+                    request,
+                    "Unable to reveal API key. This key was not stored in recoverable form or was created before reveal support. Create a new key instead."
+                )
             return redirect("monitor:api_keys")
 
-        key_id = request.POST.get("key_id")
+        key_id = request.POST.get("key_id", "").strip()
         if not key_id:
             messages.error(request, "Invalid API key request.")
             return redirect("monitor:api_keys")

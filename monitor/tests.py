@@ -239,6 +239,56 @@ class APIKeyAccessControlTestCase(TestCase):
         self.assertEqual(second_response.status_code, 302)
         self.assertEqual(APIKey.objects.filter(owner=self.admin_user).count(), 1)
 
+    def test_reveal_without_key_id_redirects_without_crashing(self):
+        self.client.login(username="limitedadmin", password="password123")
+        response = self.client.post(reverse('monitor:api_keys'), {'action': 'reveal'})
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('monitor:api_keys'))
+
+
+class AlertResolveTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="analystuser",
+            password="password123",
+            email="analyst@example.com",
+            role="analyst"
+        )
+        self.alert = Alert.objects.create(
+            alert_type="test_alert",
+            message="Test alert message",
+            severity="high",
+            is_resolved=False,
+        )
+
+    def test_resolve_alert_marks_it_resolved(self):
+        self.client.login(username="analystuser", password="password123")
+        response = self.client.post(
+            reverse('monitor:alerts'),
+            {'action': 'resolve', 'alert_id': str(self.alert.id)}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.alert.refresh_from_db()
+        self.assertTrue(self.alert.is_resolved)
+        self.assertIsNotNone(self.alert.resolved_at)
+
+    def test_resolve_alert_without_permission_redirects(self):
+        user = User.objects.create_user(
+            username="vieweruser",
+            password="password123",
+            email="viewer@example.com",
+            role="viewer"
+        )
+        self.client.login(username="vieweruser", password="password123")
+        response = self.client.post(
+            reverse('monitor:alerts'),
+            {'action': 'resolve', 'alert_id': str(self.alert.id)}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.alert.refresh_from_db()
+        self.assertFalse(self.alert.is_resolved)
+
 
 class UserManagementAccessControlTestCase(TestCase):
     """
