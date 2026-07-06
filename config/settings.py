@@ -25,7 +25,11 @@ SECRET_KEY = 'django-insecure-z3$w6pm9*c5xr9-r%(t*tu6fjno%(35*v0n)qqkxy+*1#q^fzp
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'shieldsql-python-project.onrender.com',
+    '127.0.0.1',
+    'localhost',
+]
 
 
 # Application definition
