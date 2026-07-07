@@ -1,0 +1,42 @@
+{% extends 'monitor/base.html' %}
+{% block title %}Device Inventory - ShieldSQL{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">🖥️ Device Inventory</h5>
+    <span class="badge bg-success">Login tracking enabled</span>
+  </div>
+  <div class="card-body">
+    <p class="text-muted mb-3">This page shows the devices and IP addresses used for recent sign-ins.</p>
+    {% if devices %}
+      <div class="table-responsive">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Device</th>
+              <th>IP Address</th>
+              <th>Last Login</th>
+              <th>Logins</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for device in devices %}
+              <tr>
+                <td>{{ device.user.username }}</td>
+                <td>{{ device.device_name }}</td>
+                <td>{{ device.source_ip|default:'unknown' }}</td>
+                <td>{{ device.last_login_at|date:'Y-m-d H:i' }}</td>
+                <td>{{ device.login_count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-info mb-0">No device records have been captured yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -316,6 +316,47 @@ class QueryAnalysisView(LoginRequiredMixin, View):
 class LoginView(View):
     template_name = "monitor/login.html"
 
+    def _get_client_ip(self, request) -> str:
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+        if x_forwarded_for:
+            return x_forwarded_for.split(",")[0].strip()
+        return request.META.get("REMOTE_ADDR", "unknown")
+
+    def _get_device_name(self, request) -> str:
+        user_agent = request.META.get("HTTP_USER_AGENT", "")
+        agent = user_agent.lower()
+        if not agent:
+            return "Unknown device"
+        if any(token in agent for token in ["mobile", "android", "iphone", "ipad"]):
+            return "Mobile device"
+        if "windows" in agent:
+            return "Windows device"
+        if "macintosh" in agent or "mac os" in agent:
+            return "Mac device"
+        if "linux" in agent:
+            return "Linux device"
+        if "curl" in agent or "python" in agent or "bot" in agent:
+            return "Automated client"
+        return "Browser-based device"
+
+    def _record_login_device(self, request, user) -> None:
+        source_ip = self._get_client_ip(request)
+        device_name = self._get_device_name(request)
+        user_agent = request.META.get("HTTP_USER_AGENT", "")[:500]
+
+        device, created = models.LoginDevice.objects.get_or_create(
+            user=user,
+            source_ip=source_ip,
+            device_name=device_name,
+            defaults={"user_agent": user_agent},
+        )
+        if not created:
+            device.user_agent = user_agent
+            device.login_count = device.login_count + 1
+            device.last_login_at = timezone.now()
+            device.is_active = True
+            device.save(update_fields=["user_agent", "login_count", "last_login_at", "is_active"])
+
     def get(self, request):
         if request.user.is_authenticated:
             return redirect("monitor:dashboard")
@@ -326,11 +367,25 @@ class LoginView(View):
         if form.is_valid():
             user = form.get_user()
             login(request, user)
+            self._record_login_device(request, user)
             messages.success(request, f"Welcome back, {user.display_name or user.username}!")
             next_url = request.GET.get("next") or "monitor:dashboard"
             return redirect(next_url)
         messages.error(request, "Invalid username or password.")
         return render(request, self.template_name, {"form": form})
+
+
+class DeviceInventoryView(LoginRequiredMixin, TemplateView):
+    template_name = "monitor/device_inventory.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        if self.request.user.is_superuser:
+            devices = models.LoginDevice.objects.order_by("-last_login_at")
+        else:
+            devices = models.LoginDevice.objects.filter(user=self.request.user).order_by("-last_login_at")
+        ctx["devices"] = devices
+        return ctx
 
 
 class LogoutView(View):

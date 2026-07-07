@@ -83,6 +83,26 @@ class DetectedSQLInjectionAttempt(models.Model):
         return f"SQLi from {self.source_ip or 'unknown'} at {self.timestamp}"
 
 
+class LoginDevice(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="login_devices",
+    )
+    device_name = models.CharField(max_length=120, blank=True)
+    user_agent = models.TextField(blank=True)
+    source_ip = models.GenericIPAddressField(null=True, blank=True)
+    login_count = models.PositiveIntegerField(default=1)
+    last_login_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-last_login_at"]
+
+    def __str__(self):
+        return f"{self.user.username} @ {self.device_name or 'Unknown device'}"
+
+
 class APIKey(models.Model):
     name = models.CharField(max_length=120)
     owner = models.ForeignKey(

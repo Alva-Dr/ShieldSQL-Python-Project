@@ -3,7 +3,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from monitor.models import APIKey, Log, Alert, DetectedSQLInjectionAttempt
+from monitor.models import APIKey, Log, Alert, DetectedSQLInjectionAttempt, LoginDevice
 from monitor.sqli_patterns import SQLInjectionDetector
 
 User = get_user_model()
@@ -317,4 +317,32 @@ class UserManagementAccessControlTestCase(TestCase):
     def test_superuser_can_access_user_management(self):
         self.client.login(username="superadmin", password="adminpassword")
         response = self.client.get(reverse('monitor:user_management'))
+        self.assertEqual(response.status_code, 200)
+
+
+class LoginDeviceTrackingTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="deviceuser",
+            password="devicepass",
+            email="device@example.com",
+            role="viewer"
+        )
+
+    def test_successful_login_creates_device_inventory_entry(self):
+        response = self.client.post(
+            reverse('monitor:login'),
+            {'username': 'deviceuser', 'password': 'devicepass'}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(LoginDevice.objects.filter(user=self.user).exists())
+
+        device = LoginDevice.objects.get(user=self.user)
+        self.assertTrue(device.device_name)
+        self.assertEqual(device.login_count, 1)
+
+    def test_device_inventory_page_is_accessible_for_authenticated_users(self):
+        self.client.login(username="deviceuser", password="devicepass")
+        response = self.client.get(reverse('monitor:device_inventory'))
         self.assertEqual(response.status_code, 200)

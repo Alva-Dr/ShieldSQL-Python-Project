@@ -12,6 +12,7 @@ urlpatterns = [
     path('login/', views.LoginView.as_view(), name='login'),
     path('logout/', views.LogoutView.as_view(), name='logout'),
     path('register/', views.RegisterView.as_view(), name='register'),
+    path('devices/', views.DeviceInventoryView.as_view(), name='device_inventory'),
     path('users/', views.UserManagementView.as_view(), name='user_management'),
     path('reports/pdf/', views.ExportPDFView.as_view(), name='export_pdf'),
     path('api/traffic/', views.TrafficAPIView.as_view(), name='traffic_api'),
