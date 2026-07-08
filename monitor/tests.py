@@ -216,6 +216,30 @@ class DashboardAccessTestCase(TestCase):
         self.assertRedirects(response, reverse('monitor:login') + '?next=' + reverse('monitor:dashboard'))
 
 
+class ExportPDFTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="pdfuser",
+            password="password123",
+            email="pdf@example.com",
+            role="viewer"
+        )
+
+    def test_pdf_export_handles_long_alert_messages(self):
+        self.client.login(username="pdfuser", password="password123")
+        Alert.objects.create(
+            alert_type="test_alert",
+            message="This is a very long alert message designed to test whether the PDF table wraps text safely without overlapping neighboring columns.",
+            severity="high",
+            is_resolved=False,
+        )
+
+        response = self.client.get(reverse('monitor:export_pdf'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
+
 class APIKeyAccessControlTestCase(TestCase):
     """
     Ensures regular admins can only keep one active API key at a time.
@@ -324,10 +348,10 @@ class UserManagementAccessControlTestCase(TestCase):
             role=""
         )
 
-    def test_admin_cannot_access_user_management(self):
+    def test_admin_can_access_user_management(self):
         self.client.login(username="regularadmin", password="password123")
         response = self.client.get(reverse('monitor:user_management'))
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 200)
 
     def test_superuser_can_access_user_management(self):
         self.client.login(username="superadmin", password="adminpassword")

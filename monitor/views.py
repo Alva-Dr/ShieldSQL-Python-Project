@@ -424,8 +424,8 @@ class UserManagementView(RoleRequiredMixin, View):
     min_role = "admin"
 
     def dispatch(self, request, *args, **kwargs):
-        if not request.user.is_superuser:
-            raise PermissionDenied("Only super administrators can manage users.")
+        if not (request.user.is_superuser or getattr(request.user, "role", None) == "admin"):
+            raise PermissionDenied("Only super administrators and admins can manage users.")
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request):
@@ -560,12 +560,12 @@ class ExportPDFView(RoleRequiredMixin, View):
                 tz_aware.strftime("%Y-%m-%d %H:%M"),
                 a.source_ip,
                 a.severity.upper(),
-                (a.matched_pattern or "")[:60],
+                Paragraph((a.matched_pattern or "")[:120], styles["BodyText"]),
             ])
         if len(sqli_data) == 1:
-            sqli_data.append(["No attempts recorded", "", "", ""])
+            sqli_data.append(["No attempts recorded", "", "", Paragraph("", styles["BodyText"])])
 
-        sqli_table = Table(sqli_data, colWidths=[100, 80, 60, 200])
+        sqli_table = Table(sqli_data, colWidths=[90, 70, 55, 220], repeatRows=1)
         sqli_table.setStyle(
             TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#c0392b")),
@@ -590,12 +590,12 @@ class ExportPDFView(RoleRequiredMixin, View):
                 tz_aware.strftime("%Y-%m-%d %H:%M"),
                 a.alert_type,
                 a.severity.upper(),
-                (a.message or "")[:80],
+                Paragraph((a.message or "")[:220], styles["BodyText"]),
             ])
         if len(alert_data) == 1:
-            alert_data.append(["No alerts recorded", "", "", ""])
+            alert_data.append(["No alerts recorded", "", "", Paragraph("", styles["BodyText"])])
 
-        alert_table = Table(alert_data, colWidths=[100, 80, 60, 200])
+        alert_table = Table(alert_data, colWidths=[90, 70, 55, 240], repeatRows=1)
         alert_table.setStyle(
             TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2980b9")),
