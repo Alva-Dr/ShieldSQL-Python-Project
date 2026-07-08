@@ -39,6 +39,7 @@
         <td>{% if a.is_resolved %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}</td>
         <td class="text-truncate" style="max-width:400px;">{{ a.message }}</td>
         <td>
+          <button type="button" class="btn btn-sm btn-outline-info me-2" data-bs-toggle="modal" data-bs-target="#alertModal{{ a.id }}">Details</button>
           {% if not a.is_resolved %}
           <form method="post" class="d-inline">
             {% csrf_token %}
@@ -47,15 +48,41 @@
             <button type="submit" class="btn btn-sm btn-success">Resolve</button>
           </form>
           {% else %}
-          <span class="text-muted">—</span>
+          <span class="text-muted">Resolved</span>
           {% endif %}
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="5" class="text-center text-muted">No alerts recorded</td></tr>
+      <tr><td colspan="6" class="text-center text-muted">No alerts recorded</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  {% for a in alerts %}
+  <div class="modal fade" id="alertModal{{ a.id }}" tabindex="-1" aria-labelledby="alertModalLabel{{ a.id }}" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="alertModalLabel{{ a.id }}">Full alert details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p><strong>Type:</strong> {{ a.alert_type }}</p>
+          <p><strong>Severity:</strong> {{ a.severity|upper }}</p>
+          <p><strong>Created:</strong> {{ a.created_at|date:"Y-m-d H:i:s" }}</p>
+          <p><strong>Resolved:</strong> {% if a.is_resolved %}Yes{% else %}No{% endif %}</p>
+          {% if a.resolved_at %}<p><strong>Resolved at:</strong> {{ a.resolved_at|date:"Y-m-d H:i:s" }}</p>{% endif %}
+          {% if a.user %}<p><strong>User:</strong> {{ a.user.username }}</p>{% endif %}
+          <hr>
+          <p class="mb-1"><strong>Message:</strong></p>
+          <div class="border rounded p-3 bg-light" style="white-space: pre-wrap;">{{ a.message }}</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 <nav aria-label="Page navigation">
   <ul class="pagination justify-content-center">

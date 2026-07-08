@@ -289,6 +289,14 @@ class AlertResolveTestCase(TestCase):
         self.alert.refresh_from_db()
         self.assertFalse(self.alert.is_resolved)
 
+    def test_alerts_page_shows_details_action_with_full_message(self):
+        self.client.login(username="analystuser", password="password123")
+        response = self.client.get(reverse('monitor:alerts'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Details")
+        self.assertContains(response, "Full alert details")
+        self.assertContains(response, "Test alert message")
+
 
 class UserManagementAccessControlTestCase(TestCase):
     """

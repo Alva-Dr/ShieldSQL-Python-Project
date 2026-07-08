@@ -229,7 +229,7 @@ class QueryAnalysisView(LoginRequiredMixin, View):
         # Trigger form validation (so clean_query executes)
         form.is_valid()
 
-        # Log to DB if SQLi pattern detected (regardless of validity)
+       
         if getattr(form, "suspicious", False):
             query = request.POST.get("query", "").strip()
             context = request.POST.get("source_context", "")
