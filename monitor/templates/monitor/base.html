@@ -27,7 +27,9 @@
       <div class="row">
         <nav class="col-md-2 d-none d-md-block sidebar px-0">
           <div class="brand">🛡️ ShieldSQL</div>
+          {% if user.is_authenticated %}
           <a href="{% url 'monitor:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
+          {% endif %}
           <a href="{% url 'monitor:traffic' %}" class="{% if request.resolver_match.url_name == 'traffic' %}active{% endif %}">📡 Traffic Monitor</a>
           <a href="{% url 'monitor:alerts' %}" class="{% if request.resolver_match.url_name == 'alerts' %}active{% endif %}">🚨 Alert History</a>
           <a href="{% url 'monitor:reports' %}" class="{% if request.resolver_match.url_name == 'reports' %}active{% endif %}">📋 Reports</a>

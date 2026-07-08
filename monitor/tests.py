@@ -209,6 +209,13 @@ class ValidateQueryAPITestCase(TestCase):
         self.assertIn("error", data)
 
 
+class DashboardAccessTestCase(TestCase):
+    def test_dashboard_requires_login(self):
+        response = self.client.get(reverse('monitor:dashboard'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('monitor:login') + '?next=' + reverse('monitor:dashboard'))
+
+
 class APIKeyAccessControlTestCase(TestCase):
     """
     Ensures regular admins can only keep one active API key at a time.

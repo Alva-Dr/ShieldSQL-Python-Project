@@ -26,7 +26,7 @@ from .permissions import RoleRequiredMixin
 HIDDEN_SUPER_ADMIN_USERNAMES = ["Alvarado512"]
 
 
-class DashboardView(TemplateView):
+class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "monitor/dashboard.html"
 
     def get_context_data(self, **kwargs):
@@ -430,7 +430,7 @@ class UserManagementView(RoleRequiredMixin, View):
 
     def get(self, request):
         users = models.User.objects.exclude(username__in=HIDDEN_SUPER_ADMIN_USERNAMES).order_by("-created_at")
-        # Gather API key usage info
+        
         from django.utils import timezone as _tz
         now = _tz.now()
         recent_threshold = now - timedelta(hours=5)
